@@ -1,9 +1,14 @@
 import os
+import sys
 from dotenv import load_dotenv
 from google import genai
 
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
+
+if len(sys.argv) != 2:
+  print("Usage: python3 main.py <content>")
+  sys.exit(1)
 
 client = genai.Client(api_key=api_key)
 response = client.models.generate_content(
