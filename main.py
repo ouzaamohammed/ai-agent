@@ -99,30 +99,33 @@ def main():
 				),
 			)
 
+			function_call_found = False
+
 			for candidate in response.candidates:
 				messages.append(candidate.content)
 
-			if response.function_calls:
-				for function_call_part in response.function_calls:
-					function_call_result = call_function(function_call_part, verbose)
-					if  not function_call_result.parts[0].function_response.response:
-						raise Exception(f"no result calling {function_call_part.name}({function_call_part.args})")
+				for part in candidate.content.parts:
+					if hasattr(part, "function_call") and part.function_call:
+						function_call_found = True
+						function_call_result = call_function(part.function_call, verbose)
+						if  not function_call_result.parts[0].function_response.response:
+							raise Exception(f"no result calling {part.function_call.name}({part.function_call.args})")
+						if verbose:
+							print(f"-> {function_call_result.parts[0].function_response.response}")
+						messages.append(function_call_result)
+						break
+						
+				if function_call_found:
+					break
 
-					messages.append(function_call_result)
 
-					# if not function_call_result:
-					# 	if response.text:
-					# 		print("Final response:")
-					# 		print(response.text)
-					# 		break
+			if not function_call_found:
+				# No more tool calls - model is finished
+				print('\nFinal response:')
+				if response.text:
+					print(response.text)
+				break
 
-					if verbose:
-						print(f"-> {function_call_result.parts[0].function_response.response}")		
-
-			if response.text:
-				print("Final response:")
-				print(response.text)
-			
 		except Exception as e:
 			print(f"error: {e}")
 
