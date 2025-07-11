@@ -3,91 +3,129 @@ import sys
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from functions.get_files_info import schema_get_files_info
-from functions.run_python import schema_run_python_file
-from functions.get_file_content import schema_get_file_content
-from functions.write_file import schema_write_file
-from functions.call_function import call_function
+from functions.get_files_info import schema_get_files_info,  get_files_info
+from functions.run_python import schema_run_python_file, run_python_file
+from functions.get_file_content import schema_get_file_content, get_file_content
+from functions.write_file import schema_write_file, write_file
 
-load_dotenv()
-api_key = os.environ.get("GEMINI_API_KEY")
-client = genai.Client(api_key=api_key)
 
-if len(sys.argv) < 2:
-	print("Usage: python3 main.py <content>")
-	sys.exit(1)
+def call_function(function_call_part: types.FunctionCall, verbose=False):
+    if verbose:
+        print(f"Calling function: {function_call_part.name}({function_call_part.args})")
+    else:
+        print(f" - Calling function: {function_call_part.name}")
 
-user_prompt = sys.argv[1]
-system_prompt = """
-You are a helpful AI coding agent.
+    args = function_call_part.args
+    function_name = function_call_part.name
 
-When a user asks a question or makes a request, make a function call plan. You can perform the following operations, use the available functions provided as tools:
+    args["working_directory"] = "./calculator"
+    function_result = ""
+    match function_name:
+        case "get_files_info":
+            function_result = get_files_info(**args)
+        case "write_file":
+            function_result = write_file(**args)
+        case "get_file_content":
+            function_result = get_file_content(**args)
+        case "run_python_file":
+            function_result = run_python_file(**args)
+        case _:
+            return types.Content(
+                role="tool",
+                parts=[
+                    types.Part.from_function_response(
+                        name=function_name,
+                        response={"error": f"Unknown function: {function_name}"},
+                    )
+                ],
+            )
 
-- List files and directories
-- Read file contents
-- Execute Python files with optional arguments
-- Write or overwrite files
+    return types.Content(
+        role="tool",
+        parts=[
+            types.Part.from_function_response(
+                name=function_name,
+                response={"result": function_result},
+            )
+        ],
+    )
 
-All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
-"""
-messages = [
-  	types.Content(role="user", parts=[types.Part(text=user_prompt)])
-]
 
-available_functions = types.Tool(
-	function_declarations=[
-		schema_get_files_info,
-		schema_write_file,
-		schema_get_file_content,
-		schema_run_python_file
+def main():
+	load_dotenv()
+	api_key = os.environ.get("GEMINI_API_KEY")
+	client = genai.Client(api_key=api_key)
+
+	if len(sys.argv) < 2:
+		print("Usage: python3 main.py <content>")
+		sys.exit(1)
+
+	user_prompt = sys.argv[1]
+	system_prompt = """
+	You are a helpful AI coding agent.
+
+	When a user asks a question or makes a request, you must immediately make a function call plan. You can perform the following operations, use the available functions provided as tools:
+
+	- List files and directories
+	- Read file contents
+	- Execute Python files with optional arguments
+	- Write or overwrite files
+
+	All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
+	"""
+	messages = [
+		types.Content(role="user", parts=[types.Part(text=user_prompt)])
 	]
-)
 
-verbose = sys.argv[-1] == "--verbose"
+	available_functions = types.Tool(
+		function_declarations=[
+			schema_get_files_info,
+			schema_write_file,
+			schema_get_file_content,
+			schema_run_python_file
+		]
+	)
 
-MAX_ITERATIONS = 20
-for _ in range(MAX_ITERATIONS):
-	try:
-		response = client.models.generate_content(
-			model="gemini-2.0-flash-001", 
-			contents=messages,
-			config=types.GenerateContentConfig(
-				tools=[available_functions], system_instruction=system_prompt
-			),
-		)
+	verbose = sys.argv[-1] == "--verbose"
 
-		if response.text:
-			print("Final response:")
-			print(response.text)
-			break
+	MAX_ITERATIONS = 20
+	for _ in range(MAX_ITERATIONS):
+		try:
+			response = client.models.generate_content(
+				model="gemini-2.0-flash-001", 
+				contents=messages,
+				config=types.GenerateContentConfig(
+					tools=[available_functions], system_instruction=system_prompt
+				),
+			)
 
-		for candidate in response.candidates:
-			messages.append(candidate.content)
+			for candidate in response.candidates:
+				messages.append(candidate.content)
 
-		if response.function_calls:
-			# function_responses = []
-			for function_call_part in response.function_calls:
-				function_call_result = call_function(function_call_part, verbose)
-				if  not function_call_result.parts[0].function_response.response:
-					raise Exception(f"no result calling {function_call_part.name}({function_call_part.args})")
+			if response.function_calls:
+				for function_call_part in response.function_calls:
+					function_call_result = call_function(function_call_part, verbose)
+					if  not function_call_result.parts[0].function_response.response:
+						raise Exception(f"no result calling {function_call_part.name}({function_call_part.args})")
 
-				print(f"function responses: {function_call_result.parts[0].function_response}")
+					messages.append(function_call_result)
 
-				messages.append(function_call_result)
-				# function_responses.append(function_call_result.parts[0])
+					# if not function_call_result:
+					# 	if response.text:
+					# 		print("Final response:")
+					# 		print(response.text)
+					# 		break
 
-				if verbose:
-					print(f"-> {function_call_result.parts[0].function_response.response}")
+					if verbose:
+						print(f"-> {function_call_result.parts[0].function_response.response}")		
 
-				# if not function_call_result:
-				# 	print("Final response:")
-				# 	print(response.text)
-				# 	break
+			if response.text:
+				print("Final response:")
+				print(response.text)
+			
+		except Exception as e:
+			print(f"error: {e}")
 
-			# messages.append(types.Content(
-			# 	role="tool",
-			# 	parts=function_responses
-			# ))
-		
-	except Exception as e:
-		print(f"error: {e}")
+
+if __name__ == "__main__":
+	main()
