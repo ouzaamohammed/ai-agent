@@ -3,52 +3,11 @@ import sys
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from functions.get_files_info import schema_get_files_info,  get_files_info
-from functions.run_python import schema_run_python_file, run_python_file
-from functions.get_file_content import schema_get_file_content, get_file_content
-from functions.write_file import schema_write_file, write_file
-
-
-def call_function(function_call_part: types.FunctionCall, verbose=False):
-    if verbose:
-        print(f"Calling function: {function_call_part.name}({function_call_part.args})")
-    else:
-        print(f" - Calling function: {function_call_part.name}")
-
-    args = function_call_part.args
-    function_name = function_call_part.name
-
-    args["working_directory"] = "./calculator"
-    function_result = ""
-    match function_name:
-        case "get_files_info":
-            function_result = get_files_info(**args)
-        case "write_file":
-            function_result = write_file(**args)
-        case "get_file_content":
-            function_result = get_file_content(**args)
-        case "run_python_file":
-            function_result = run_python_file(**args)
-        case _:
-            return types.Content(
-                role="tool",
-                parts=[
-                    types.Part.from_function_response(
-                        name=function_name,
-                        response={"error": f"Unknown function: {function_name}"},
-                    )
-                ],
-            )
-
-    return types.Content(
-        role="tool",
-        parts=[
-            types.Part.from_function_response(
-                name=function_name,
-                response={"result": function_result},
-            )
-        ],
-    )
+from functions.get_files_info import schema_get_files_info
+from functions.run_python_file import schema_run_python_file
+from functions.get_file_content import schema_get_file_content
+from functions.write_file import schema_write_file
+from functions.call_function import call_function
 
 
 def main():
@@ -56,11 +15,12 @@ def main():
 	api_key = os.environ.get("GEMINI_API_KEY")
 	client = genai.Client(api_key=api_key)
 
+	# Making sure the prompt was provided
 	if len(sys.argv) < 2:
-		print("Usage: python3 main.py <content>")
+		print("Usage: python3 main.py <prompt>")
 		sys.exit(1)
 
-	user_prompt = sys.argv[1]
+	# this is a high level prompt to set the tone
 	system_prompt = """
 	You are a helpful AI coding agent.
 
@@ -73,10 +33,14 @@ def main():
 
 	All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
 	"""
-	messages = [
-		types.Content(role="user", parts=[types.Part(text=user_prompt)])
-	]
 
+	# parsing the prompt from args
+	user_prompt = sys.argv[1]
+
+	# store --verbose flag
+	verbose = sys.argv[-1] == "--verbose"
+
+	# listing the available function tools
 	available_functions = types.Tool(
 		function_declarations=[
 			schema_get_files_info,
@@ -86,11 +50,15 @@ def main():
 		]
 	)
 
-	verbose = sys.argv[-1] == "--verbose"
+	messages = [
+		types.Content(role="user", parts=[types.Part(text=user_prompt)])
+	]
 
+	# give the agent a feedback loop for at most 20 iterations
 	MAX_ITERATIONS = 20
 	for _ in range(MAX_ITERATIONS):
 		try:
+			# get response back from the AI-agent and printing it
 			response = client.models.generate_content(
 				model="gemini-2.0-flash-001", 
 				contents=messages,
@@ -99,8 +67,10 @@ def main():
 				),
 			)
 
+			# check for function call
 			function_call_found = False
 
+			# loop throught each candidate
 			for candidate in response.candidates:
 				messages.append(candidate.content)
 
@@ -118,7 +88,6 @@ def main():
 				if function_call_found:
 					break
 
-
 			if not function_call_found:
 				# No more tool calls - model is finished
 				print('\nFinal response:')
@@ -128,7 +97,6 @@ def main():
 
 		except Exception as e:
 			print(f"error: {e}")
-
 
 if __name__ == "__main__":
 	main()
