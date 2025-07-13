@@ -39,7 +39,7 @@ The result is a powerful example of AI-assistant software engineering -- blendin
 
 ## Usage
 
-```py
+```python
 ur run main.py "explain how does the calculator render results to the console."
 # print a explaination of how the calculator render results to the console
 
