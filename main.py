@@ -80,8 +80,10 @@ def main():
 						function_call_result = call_function(part.function_call, verbose)
 						if  not function_call_result.parts[0].function_response.response:
 							raise Exception(f"no result calling {part.function_call.name}({part.function_call.args})")
+						
 						if verbose:
 							print(f"-> {function_call_result.parts[0].function_response.response}")
+
 						messages.append(function_call_result)
 						break
 						
