@@ -4,7 +4,7 @@
 
 This tool includes guadrails such as path whitelisting and a 30-seconds excution timeout. However, it does excute local files and **must not** be untrusted or user-submitted code unless further sandboxing (e.g containers, firejailing) is added.
 
-## 🧠 Projec Summary:
+## 🧠 Project Summary:
 
 This is a two-parts educational project that demonstrates
 
@@ -34,7 +34,15 @@ The result is a powerful example of AI-assistant software engineering -- blendin
 ├── main.py                  # Entry point: CLI interface for AI interaction
 ├── pyproject.toml           # Project metadata and dependencies
 ├── README.md                # Project overview and usage instructions
-├── SECURITY.md              # Project security features and warnings
-├── tests.py                 # Unit tests for functions
 └── uv.lock                  # Project dependency lockfile
+```
+
+## Usage
+
+```py
+ur run main.py "explain how does the calculator render results to the console."
+# print a explaination of how the calculator render results to the console
+
+ur run main.py "explain how does the calculator render results to the console." --verbose
+# you can add an optional --verbose flag to print more informations/details.
 ```
